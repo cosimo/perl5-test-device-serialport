@@ -1,0 +1,6 @@
+Revision history for Perl extension Test::Device::SerialPort.
+
+0.01  Wed Feb 14 15:07:07 2007
+	- original version; created by h2xs 1.23 with options
+		-A -X -b 5.6.1 -n Test::Device::SerialPort
+

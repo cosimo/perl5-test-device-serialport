@@ -1,0 +1,7 @@
+Changes
+Makefile.PL
+MANIFEST
+README
+t/Test-Device-SerialPort.t
+lib/Test/Device/SerialPort.pm
+META.yml                                 Module meta-data (added by MakeMaker)
