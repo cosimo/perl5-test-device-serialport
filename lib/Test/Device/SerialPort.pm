@@ -232,6 +232,10 @@ sub new
 	_LMATCH => "",
 	_LPATT => "",
     };
+    if ($^O eq "MSWin32" && $self->{_device} =~ /^COM\d+$/io) {
+	$self->{_device} = '\\\\.\\' . $self->{_device};
+	# required for Win32 COM10++, done for all to support testing
+    }
     return bless ($self, $class);
 }
 
@@ -518,7 +522,7 @@ sub can_xon_char
 
 sub can_spec_char
 {
-    return ($^O eq 'MSWin32') ? 1 : 0;
+    return(0);
 }
 
 sub binary

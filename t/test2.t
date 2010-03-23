@@ -49,7 +49,7 @@ is ($ob->read_char_time, 0, 'read_char_time');
 is ($ob->read_const_time, 0, 'read_const_time');
 is (scalar $ob->debug, 0, 'debug');
 is ($ob->set_no_random_data, 0, 'set_no_random_data');
-is ($ob->device, 'COM1', 'device');
+is ($ob->device, ($^O eq "MSWin32") ? '\\\\.\\COM1' :'COM1', 'device');
 is ($ob->alias, 'COM1', 'alias');
 is ($ob->input, chr(0xa5), 'fake input');
 is ($ob->binary, 1, 'binary');
