@@ -10,6 +10,11 @@ It should be interesting to subclass it to something like
 Test::Device::SerialPort::Modem or T::D::S::Gsm or something like that.
 Who knows?
 
+Lots of additional methods and some test cases added by Bill Birthisel.
+It now runs under Windows in place of Win32::SerialPort as well as
+under the OS's supported by Device::SerialPort (March 2010). Most of
+the commonly used functions emulate as advertised.
+
 
 INSTALLATION
 
@@ -20,7 +25,9 @@ To install this module type the following:
    make test
    make install
 
-
+If you don't have make, Makefile.PL also creates pure perl scripts
+to test and install (mostly for Win32 users).
+ 
 SOURCE CODE REPOSITORY
 
   http://github.com/cosimo/perl5-test-device-serialport/
@@ -33,4 +40,3 @@ Copyright (C) 2007-2010 by Streppone Cosimo
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.6 or,
 at your option, any later version of Perl 5 you may have available.
-

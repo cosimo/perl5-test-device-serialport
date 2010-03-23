@@ -1,16 +1,16 @@
-use lib '.','./t','./lib','../lib';
+use lib '.','./t','./lib','../lib','..';
 # can run from here or distribution base
 
 use Test::More;
-plan tests => 145;
+plan tests => 131;
 
 ## some online discussion of issues with use_ok, so just sanity check
-cmp_ok($Test::Device::SerialPort::VERSION, '>=', 0.03, 'VERSION check');
+cmp_ok($AltPort::VERSION, '>=', 0.03, 'VERSION check');
 
 # USB and virtual ports can't test output timing, first fail will set this
 my $BUFFEROUT=0;
 
-use Test::Device::SerialPort qw( :STAT 0.03 );
+use AltPort qw( :STAT 0.03 );
 
 use strict;
 use warnings;
@@ -56,50 +56,29 @@ my $e;
 my $tick;
 my $tock;
 my %required_param;
-my @necessary_param = Test::Device::SerialPort->set_test_mode_active(1);
+my @necessary_param = AltPort->set_test_mode_active(1);
 
 unlink $cfgfile;
 foreach $e (@necessary_param) { $required_param{$e} = 0; }
 
 ## 2 - 4 SerialPort Global variable ($Babble);
 
-is_bad(scalar Test::Device::SerialPort::debug, 'no debug init');
-ok(scalar Test::Device::SerialPort::debug(1), 'set debug');
-is_bad(scalar Test::Device::SerialPort::debug(2), 'invalid set debug');
-ok(scalar Test::Device::SerialPort->debug(1), 'set debug');
-ok(scalar Test::Device::SerialPort::debug(), ' read debug state');
-
-# 5 - 18: yes_true subroutine, no need to SHOUT if it works
-
-ok( Test::Device::SerialPort::debug("T"), 'yes_true() tests = T' );
-ok( !Test::Device::SerialPort::debug("F"), 'F');
-
-{
-    no strict 'subs';
-    ok( Test::Device::SerialPort::debug(T), 'T');
-    ok(!Test::Device::SerialPort::debug(F), 'F');
-    ok( Test::Device::SerialPort::debug(Y), 'Y');
-    ok(!Test::Device::SerialPort::debug(N), 'N');
-    ok( Test::Device::SerialPort::debug(ON), 'ON');
-    ok(!Test::Device::SerialPort::debug(OFF), 'OFF');
-    ok( Test::Device::SerialPort::debug(TRUE), 'TRUE');
-    ok(!Test::Device::SerialPort::debug(FALSE), 'FALSE');
-    ok( Test::Device::SerialPort::debug(Yes), 'Yes');
-    ok(!Test::Device::SerialPort::debug(No), 'No');
-    ok( Test::Device::SerialPort::debug("yes"), 'yes');
-    ok(!Test::Device::SerialPort::debug("f"), 'f');
-}
-
-### ok(!$fault, 'no fault (yet)');					# 19
-
-@opts = Test::Device::SerialPort::debug();		# 20: binary_opt array
-### warn Dumper \@opts;
-ok(test_bin_list(@opts), 'binary_opt_array');
 
 # 19: Constructor
 
-ok($ob = Test::Device::SerialPort->new ($file), "new $file");
+ok($ob = AltPort->new ($file), "new $file");
 die unless ($ob);    # next tests would die at runtime
+
+# 5 - 18: object debug method
+
+is_bad( scalar $ob->debug(), 'object debug init');
+ok( scalar $ob->debug("T"), 'T' );
+ok( scalar $ob->debug(), 'read debug state' );
+is_bad( scalar $ob->debug("2"), 'invalid debug turns off' );
+is_bad( scalar $ob->debug(), 'confirm off' );
+
+@opts = $ob->debug();
+ok(test_bin_list(@opts), 'binary_opt_array');
 
 #### 20 - 38: Check Port Capabilities 
 
