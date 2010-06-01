@@ -18,7 +18,7 @@ use warnings;
 
 require Exporter;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 our @ISA = qw(Exporter);
 our @EXPORT= qw();
 our @EXPORT_OK= qw();
@@ -55,6 +55,7 @@ my %Yes_resp = (
 
 # mostly for test suite
 my %Bauds = (
+		1200	=> 1,
 		2400	=> 1,
 		9600	=> 1,
 		57600	=> 1,

@@ -15,6 +15,7 @@ It now runs under Windows in place of Win32::SerialPort as well as
 under the OS's supported by Device::SerialPort (March 2010). Most of
 the commonly used functions emulate as advertised.
 
+June, 2010: Added example that syncronizes with a free-running data stream
 
 INSTALLATION
 
