@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-my $version = "0.04";	# for nomake versions
+my $version = "0.05";	# for nomake versions
 use ExtUtils::MakeMaker;
 
 WriteMakefile(

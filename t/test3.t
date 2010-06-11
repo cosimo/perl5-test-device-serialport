@@ -2,7 +2,7 @@ use lib '.','./t','./lib','../lib';
 # can run from here or distribution base
 
 use Test::More;
-plan tests => 120;
+plan tests => 133;
 
 ## some online discussion of issues with use_ok, so just sanity check
 cmp_ok($AltPort::VERSION, '>=', 0.03, 'VERSION check');
@@ -10,7 +10,7 @@ cmp_ok($AltPort::VERSION, '>=', 0.03, 'VERSION check');
 # Some OS's (BSD, linux on Alpha, etc.) can't test pulse timing
 my $TICKTIME=0;
 
-use AltPort qw( :STAT 0.03 );
+use AltPort qw( :STAT 0.05 );
 
 use strict;
 use warnings;
@@ -328,6 +328,36 @@ ok (20 == $ob->read_char_time(20), 'read_char_time');
     is(ST_INPUT, 1, 'ST_INPUT');
     is(ST_OUTPUT, 2, 'ST_OUTPUT');
     is(ST_ERROR, 3, 'ST_ERROR');
+
+## 120 - 372: Status
+
+    $ob->reset_error;
+    is(scalar (@opts = $ob->is_status), 4, 'is_status array');
+
+    # default should be $in=0, $out=0, $blk=0, $err=0
+    ($blk, $in, $out, $err)=@opts;
+
+    is($blk, 0, 'blocking bits');
+    is($in, 0, 'input count');
+    is($out, 0, 'output count');
+    is($err, 0, 'error bits');
+
+    ($blk, $in, $out, $err)=$ob->is_status(0x150, 0xaa);	# test only
+    is($err, 0x150, 'error_bits forced');
+    is($blk, 0xaa, 'blocking bits forced');
+
+    ($blk, $in, $out, $err)=$ob->is_status(0, 0x55);	# test only
+    is($err, 0x150, 'error_bits retained');
+    is($blk, 0x55, 'blocking bits forced alt');
+
+    ($blk, $in, $out, $err)=$ob->is_status(0x0f);	# test only
+    is($err, 0x15f, 'error bits add');
+    is($blk, 0, 'blocking bits reset');
+
+    is($ob->reset_error, 0x15f, 'reset_error');
+
+    ($blk, $in, $out, $err)=$ob->is_status;
+    is($err, 0, 'error bits');
 
     $tick=$ob->get_tick_count;
     ok ($ob->pulse_break_on(250), 'pulse break on');

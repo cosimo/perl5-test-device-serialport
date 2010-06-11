@@ -72,7 +72,7 @@ if ($port eq 'TEST') {
 	$ob->set_test_mode_active(1);
 	my $data = "PAPP 00400 %\cM\cJ";	# start partway thru pattern
 	$data .= "MOTDETAT 000000 B\cM\cC\cB\cJ";
-	$data .= "ADCO 020322590713 9\cM\cJ";
+	$data .= "ADCO 012345678901 E\cM\cJ";
 	$data .= "OPTARIF BASE 0\cM\cJ";
 	$data .= "ISOUSC 30 9\cM\cJ";
 	$data .= "BASE 024576277 3\cM\cJ";

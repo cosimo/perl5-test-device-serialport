@@ -4,12 +4,13 @@ package Test::Device::SerialPort;
 
 use Carp;
 use Data::Dumper;
-use POSIX; # this much works even in Win32
 
 BEGIN {
-	if ($^O eq "MSWin32") {
+	if ($^O eq "MSWin32" || $^O eq "cygwin") {
 		eval "use Win32";
 		warn "Timing Tests unavailable: $@\n" if ($@);
+	} else {
+		eval "use POSIX";
 	}
 } # end BEGIN
 
@@ -18,7 +19,7 @@ use warnings;
 
 require Exporter;
 
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 our @ISA = qw(Exporter);
 our @EXPORT= qw();
 our @EXPORT_OK= qw();
@@ -232,6 +233,8 @@ sub new
 	_LASTLOOK => "",
 	_LMATCH => "",
 	_LPATT => "",
+	_LATCH => 0,			# for test suite only
+	_BLOCK => 0			# for test suite only
     };
     if ($^O eq "MSWin32" && $self->{_device} =~ /^COM\d+$/io) {
 	$self->{_device} = '\\\\.\\' . $self->{_device};
@@ -288,7 +291,38 @@ sub pulse_rts_on {
     return 1;
 }
 
-## The fakestatus method does the same for status bits
+## Win32 version which allows setting Blocking and Error bitmasks for test
+## backwards compatiblity requires Errors be set first
+
+sub is_status {
+    my $self		= shift;
+
+    if (@_ and $testactive) {
+        $self->{"_LATCH"} |= shift;
+        $self->{"_BLOCK"} = shift || 0;
+    }
+
+    my @stat = ($self->{"_BLOCK"}, 0, 0);
+    $self->{"_BLOCK"} = 0;
+    push @stat, $self->{"_LATCH"};
+    return @stat;
+}
+
+sub reset_error {
+    my $self = shift;
+    my $was  = $self->{"_LATCH"};
+    $self->{"_LATCH"} = 0;
+    return $was;
+}
+
+sub status {
+    my $self		= shift;
+    my @stat = $self->is_status;
+    return unless (scalar @stat);
+    return @stat;
+}
+
+## The fakestatus method does the same for modemline bits
 
 sub fakestatus {
     my $self = shift;
@@ -539,11 +573,6 @@ sub can_write_done
 sub write_done
 {
     return(0); #invalid with Solaris, VM and USB ports 
-}
-
-sub reset_error
-{
-    return(0); # compatibility?
 }
 
 sub can_interval_timeout
