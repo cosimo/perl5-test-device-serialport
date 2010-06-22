@@ -1153,15 +1153,20 @@ Used mainly for testing when I don't have an actual device to test.
 
 =head1 STATUS
 
-Just a sketch version...
+Started as a really sketchy and cheap way to mock serial port
+objects in unit tests.
+
+Thanks to the work Bill Birthisel has put into this distribution,
+C<Test::Device::SerialPort> should now mimick a serial port fairly
+accurately.
 
 =head1 SEE ALSO
 
-=over *
+=over
 
-=item Device::SerialPort
+=item L<Device::SerialPort>
 
-=item Win32::SerialPort
+=item L<Win32::SerialPort>
 
 =back
 
@@ -1175,6 +1180,7 @@ Tied filehandle methods are not supported yet either.
 =head1 AUTHORS
 
 Cosimo Streppone, <cosimo@cpan.org>
+
 Additional support added by Bill Birthisel <wcbirthisel@alum.mit.edu>
 
 =head1 COPYRIGHT AND LICENSE
