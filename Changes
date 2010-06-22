@@ -1,10 +1,10 @@
 Revision history for Perl extension Test::Device::SerialPort.
 
-0.05  Thu Jun 10 12:59:04 2010
+0.05  Thu Jun 10 12:59:04 2010 (Bill Birthisel)
 	- Add status and is_status methods
 	- Work around POSIX.pm warnings on Windows
 
-0.04  Tue Jun 01 15:55:00 2010
+0.04  Tue Jun 01 15:55:00 2010 (Bill Birthisel)
 	- Add demo eg/elect_meter.pl
 	- Allow 1200 baud
 	- resolve timing test failures
