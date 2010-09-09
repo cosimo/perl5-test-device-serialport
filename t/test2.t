@@ -60,7 +60,7 @@ is ($out, 4096, 'buffer out');
 
 ### 27 - 65: Defaults for streamline and lookfor
 
-is ($ob->set_no_random_data, 0, 'initial no_random_data');
+is ($ob->set_no_random_data, 0, 'initially random_data');
 ok ($ob->set_no_random_data(1), 'set no_random_data');
 @opts = $ob->are_match;
 is (scalar @opts, 1, 'are match');

@@ -17,6 +17,8 @@ the commonly used functions emulate as advertised.
 
 June, 2010: Added example that syncronizes with a free-running data stream
 
+September, 2010: Add tied filehandle support and additional examples
+
 INSTALLATION
 
 To install this module type the following:

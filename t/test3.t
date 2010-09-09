@@ -2,7 +2,7 @@ use lib '.','./t','./lib','../lib';
 # can run from here or distribution base
 
 use Test::More;
-plan tests => 133;
+plan tests => 195;
 
 ## some online discussion of issues with use_ok, so just sanity check
 cmp_ok($AltPort::VERSION, '>=', 0.03, 'VERSION check');
@@ -10,10 +10,29 @@ cmp_ok($AltPort::VERSION, '>=', 0.03, 'VERSION check');
 # Some OS's (BSD, linux on Alpha, etc.) can't test pulse timing
 my $TICKTIME=0;
 
-use AltPort qw( :STAT 0.05 );
+use AltPort qw( :STAT 0.06 );
 
 use strict;
 use warnings;
+
+package main;	# default, but safe to know when using write_decoder
+
+sub test_write_decoder {
+    return unless (@_ == 2);
+    my $self = shift;
+    my $wbuf = shift;
+    my $response = "";
+    return unless ($wbuf);
+    if ($wbuf eq 'Test_A') {
+	$response = 'Aa';
+    } elsif ($wbuf eq 'Test_B') {
+	$response = 'Bb';
+    } else {
+	$response = 'Not Found';
+    }
+    $self->lookclear($response);
+    return length($wbuf);
+}
 
 ## verifies the (0, 1) list returned by binary functions
 sub test_bin_list {
@@ -23,24 +42,17 @@ sub test_bin_list {
     return 1;
 }
 
-sub is_zero {
-    local $Test::Builder::Level = $Test::Builder::Level + 1;
-    return ok(shift == 0, shift);
-}
-
 sub is_bad {
     local $Test::Builder::Level = $Test::Builder::Level + 1;
     return ok(!shift, shift);
 }
 
-# assume a "vanilla" port on "COM1" to check alias and device
+# assume a "vanilla" port on "TEST" to check alias and device
 
-my $file = "COM1";
+my $file = "TEST";
 
 my $cfgfile = "$file"."_test.cfg";
-my $tstlock = "$file"."_lock.cfg";
 $cfgfile =~ s/.*\///;
-$tstlock =~ s/.*\///;
 
 my $fault = 0;
 my $ob;
@@ -90,23 +102,23 @@ ok($ob->can_xonxoff, 'can_xonxoff');
 ok($ob->can_total_timeout, 'can_total_timeout');
 ok($ob->can_xon_char, 'can_xon_char');
 
-is_zero($ob->can_spec_char, 'can_spec_char');
-is_zero($ob->can_16bitmode, 'can_16bitmode');
+is($ob->can_spec_char, 0, 'can_spec_char');
+is($ob->can_16bitmode, 0, 'can_16bitmode');
 
 if ($^O eq 'MSWin32') {
 	ok($ob->can_rlsd, 'can_rlsd');
 	ok($ob->can_interval_timeout, 'can_interval_timeout');
-	is_zero($ob->can_ioctl, 'can_ioctl');
+	is($ob->can_ioctl, 0, 'can_ioctl');
 	is($ob->device, '\\\\.\\'.$file, 'Win32 device');
 } else {
-	is_zero($ob->can_rlsd, 'can_rlsd');
-	is_zero($ob->can_interval_timeout, 'can_interval_timeout');
+	is($ob->can_rlsd, 0, 'can_rlsd');
+	is($ob->can_interval_timeout, 0, 'can_interval_timeout');
 	ok($ob->can_ioctl, 'can_ioctl');
 	is($ob->alias, $file, 'device not implemented');
 }
 is($ob->alias, $file, 'alias init');
 ok($ob->is_rs232, 'is_rs232');
-is_zero($ob->is_modem, 'is_modem');
+is($ob->is_modem, 0, 'is_modem');
 
 #### 30 - 70: Set Basic Port Parameters 
 
@@ -198,14 +210,14 @@ ok($out == $err, 'check buffers out setting');
 ## 67 - 70: Other Parameters (Defaults)
 
 is($ob->alias("TestPort"), 'TestPort', 'alias');
-is_zero(scalar $ob->parity_enable(0), 'parity disable');
+is(scalar $ob->parity_enable(0), 0, 'parity disable');
 ok($ob->write_settings, 'write_settings');
 ok($ob->binary, 'binary');
 
 ## 71 - 72: Read Timeout Initialization
 
-is_zero(scalar $ob->read_const_time, 'read_const_time');
-is_zero(scalar $ob->read_char_time, 'read_char_time');
+is(scalar $ob->read_const_time, 0, 'read_const_time');
+is(scalar $ob->read_char_time, 0, 'read_char_time');
 
 ## 73 - 78: No Handshake, Polled Write
 
@@ -224,8 +236,7 @@ unless ($err > 1950 && $err < 2100) {
 }
 print "<2000> elapsed time=$err\n";
 
-$pass=$ob->write($line);
-ok($pass == 188, 'write character count');
+is(($ob->write($line)), 188, 'write character count');
 ok (1, 'skip write timeout');
 
 ok(scalar $ob->purge_tx, 'purge_tx');
@@ -236,12 +247,12 @@ ok(scalar $ob->purge_all, 'purge_all');
 
 @opts = $ob->user_msg;
 ok(test_bin_list(@opts), 'user_msg_array');
-is_zero(scalar $ob->user_msg, 'user_msg init OFF');
+is(scalar $ob->user_msg, 0, 'user_msg init OFF');
 ok(1 == $ob->user_msg(1), 'user_msg_ON');
 
 @opts = $ob->error_msg;
 ok(test_bin_list(@opts), 'error_msg_array');
-is_zero(scalar $ob->error_msg, 'error_msg init OFF');
+is(scalar $ob->error_msg, 0, 'error_msg init OFF');
 ok(1 == $ob->error_msg(1), 'error_msg_ON');
 
 ## 85 - 91: Save and Check Configuration
@@ -369,8 +380,155 @@ ok (20 == $ob->read_char_time(20), 'read_char_time');
     }
     print "<500> elapsed time=$err\n";
 
-ok($ob->close, 'close');	# 120: finish gracefully
+ok($ob->close, 'close');	# finish gracefully
 
     # destructor = DESTROY method
 undef $ob;					# Don't forget this one!!
+
+## 187 - xxx: Check Saved Configuration (File Headers)
+
+ok(open(CF, "$cfgfile"), 'open config file');
+my ($signature, $name, @values) = <CF>;
+close CF;
+
+ok(1 == grep(/SerialPort_Configuration_File/, $signature), 'signature');
+
+chomp $name;
+if ($file =~ /^COM\d+$/io) {
+	is($name, '\\\\.\\'.$file, 'config file device');
+} else {
+	is($name, $file, 'config file device');
+}
+
+# ## 191 - 192: Check that Values listed exactly once
+# 
+# $fault = 0;
+# foreach $e (@values) {
+#     chomp $e;
+#     ($in, $out) = split(',',$e);
+#     $fault++ if ($out eq "");
+#     $required_param{$in}++;
+#     }
+# is($fault, 0, 'no duplicate values exist');
+# 
+# $fault = 0;
+# foreach $e (@necessary_param) {
+#     $fault++ unless ($required_param{$e} ==1);
+#     }
+# is($fault, 0, 'all required keys appear once');
+
+## 193 - 125: Reopen as Tie
+
+# constructor = TIEHANDLE method
+ok ($ob = tie(*PORT,'Test::Device::SerialPort', $cfgfile), 'tie');
+die unless ($ob);    # next tests would die at runtime
+
+# flush _fake_input
+is($ob->input, chr(0xa5), 'flush CM11 preset');
+
+# confirm no write decoding
+is(($ob->write('Test_A')), 6, 'write_decoder init off Test_A');
+is($ob->input, '', 'empty input A');
+is(($ob->write('Test_B')), 6, 'write Test_B');
+is($ob->input, '', 'empty input B');
+is(($ob->write('Test_Z')), 6, 'write Test_Z');
+is($ob->input, '', 'empty input other');
+
+# now add write decoding
+is(($ob->write_decoder('main::test_write_decoder')), '', 'set write decoder');
+is(($ob->write('Test_A')), 6, 'write_decoder init off Test_A');
+is($ob->input, 'Aa', 'Test_A response');
+is(($ob->write('Test_B')), 6, 'write Test_B');
+is($ob->input, 'Bb', 'Test_B response');
+is(($ob->write('Test_Z')), 6, 'write Test_Z');
+is($ob->input, 'Not Found', 'other response');
+
+# turn write decoding off again, confirm returns prior subroutine
+is(($ob->write_decoder('')), 'main::test_write_decoder', 'write decoder off');
+is(($ob->write('Test_A')), 6, 'write Test_A');
+is($ob->input, '', 'empty input A');
+is(($ob->write('Test_B')), 6, 'write Test_B');
+is($ob->input, '', 'empty input B');
+is(($ob->write('Test_Z')), 6, 'write Test_Z');
+is($ob->input, '', 'empty input other');
+
+# tie to PRINT method
+is((print PORT $line), 1, 'PRINT method');
+
+# tie to PRINTF method
+is((printf PORT "123456789_%s_987654321", $line), 1, 'PRINTF method');
+
+# read (no data)
+ok ($ob->set_no_random_data(1), 'set no_random_data');
+($in, $in2) = $ob->read(10);
+is($in, 0, 'read disconnected port');
+ok ($in2 eq "", 'no data');
+
+# tie to GETC method
+is((getc PORT), undef, 'GETC method no data');
+is(($ob->lookclear('C')), 1, 'preload character');
+is((getc PORT), 'C', 'GETC method C');
+
+# tie to READLINE method
+@opts = $ob->are_match("\n");
+is(scalar @opts, 1, 'are match');
+is($opts[0], "\n", 'new line as default');
+$fail = <PORT>;
+is($fail, undef, 'READLINE method no data');
+is(($ob->lookclear("Line_1\nLine_2\nLine3")), 1, 'preload data');
+$pass = <PORT>;
+is($pass, "Line_1\n", 'READLINE Line_1');
+$pass = <PORT>;
+is($pass, "Line_2\n", 'READLINE Line_2');
+$fail = <PORT>;
+is($fail, undef, 'READLINE no data for incomplete line');
+
+# slurp mode
+@opts = <PORT>;
+is(scalar @opts, 0, 'READLINE no data');
+is(($ob->lookclear("Line_1\nLine_2\nLine3")), 1, 'preload data');
+@opts = <PORT>;
+is(scalar @opts, 2, 'READLINE slurp data');
+is($opts[0], "Line_1\n", 'READLINE Line_1');
+is($opts[1], "Line_2\n", 'READLINE Line_2');
+
+# tie to WRITE method
+$pass=syswrite PORT, $line, length($line), 0;
+is($pass, 188, 'syswrite count');
+$pass=syswrite PORT, $line, 30, 0;
+is($pass, 30, 'syswrite count with length');
+$pass=syswrite PORT, $line, length($line), 20;
+is($pass, 168, 'syswrite count with offset');
+
+# tie to READ method
+$in = "1234567890";
+$fail = sysread (PORT, $in, 5, 0);
+is($fail, undef, 'sysread returns undef');
+
+is(($ob->lookclear("ABCDE")), 1, 'preload data');
+$pass = sysread (PORT, $in, 5, 0);
+is($pass, 5, 'sysread reads 5 characters');
+is($in, "ABCDE67890", 'sysread no offset');
+
+is(($ob->lookclear("defgh")), 1, 'preload data');
+$pass = sysread (PORT, $in, 5, 3);
+is($pass, 5, 'sysread reads 5 characters offset 3');
+is($in, "ABCdefgh90", 'sysread no offset');
+
+is(($ob->lookclear("ijklm")), 1, 'preload data');
+$pass = sysread (PORT, $in, 5, 8);
+is($pass, 5, 'sysread reads 5 characters offset 8');
+is($in, "ABCdefghijklm", 'sysread no offset');
+
+is(($ob->lookclear("12345")), 1, 'preload data');
+$pass = sysread (PORT, $in, 5, -9);
+is($pass, 5, 'sysread reads 5 characters offset -9');
+is($in, "ABCd12345jklm", 'sysread no offset');
+
+# destructor = CLOSE method
+ok(close PORT, 'close');
+
+# destructor = DESTROY method
+undef $ob;					# Don't forget this one!!
+untie *PORT;
 

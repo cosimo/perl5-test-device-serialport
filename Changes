@@ -1,5 +1,11 @@
 Revision history for Perl extension Test::Device::SerialPort.
 
+0.05  Sat Sep 04 21:06:00 2010
+	- Add ControlX10:xx examples and read_back_cmd
+	- Add write_decoder capability and removed unused cm11_write
+	- Add tied filehandle support and demo
+	- Improved documentation
+
 0.05  Thu Jun 10 12:59:04 2010
 	- Add status and is_status methods
 	- Work around POSIX.pm warnings on Windows
