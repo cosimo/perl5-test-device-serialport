@@ -19,7 +19,7 @@ use warnings;
 
 require Exporter;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 our @ISA = qw(Exporter);
 our @EXPORT= qw();
 our @EXPORT_OK= qw();
@@ -185,7 +185,7 @@ sub debug {
         else {
 	    my $tmp = $self->{"_debug"};
 	    ## warn "WCB-B, $tmp\n";
-            nocarp || carp "Debug level: $self->{ALIAS} = $tmp";
+            nocarp || carp "Debug level: $self->{_alias} = $tmp";
             return $self->{"_debug"};
         }
     } else {
@@ -227,12 +227,16 @@ sub new
 	_debug => 0,			# for test suite only
 	_fake_status => 0,		# for test suite only
 	_fake_input => chr(0xa5),	# X10 CM11 wakeup
+	_write_decoder => "",		# optional: fake inputs from outputs
+	_cm17_bits => "",		# X10 CM17 output string (testing)
 	_rx_bufsize => 4096,		# Win32 compatibility
 	_tx_bufsize => 4096,
 	_LOOK => "",			# for lookfor and streamline
 	_LASTLOOK => "",
 	_LMATCH => "",
 	_LPATT => "",
+	_OFS => "",			# output field separator (tie)
+	_ORS => "",			# output record separator (tie)
 	_LATCH => 0,			# for test suite only
 	_BLOCK => 0			# for test suite only
     };
@@ -258,6 +262,7 @@ sub pulse_break_on {
 
 sub pulse_dtr_off {		# "1" bit
     my $self = shift;
+    $self->{_cm17_bits} .= "1";
     my $delay = shift || 1;     # length of pulse, default to minimum
     select (undef, undef, undef, $delay/500);
     return 1;
@@ -272,10 +277,27 @@ sub pulse_dtr_off {		# "1" bit
 
 sub pulse_rts_off {		# "0" bit
     my $self = shift;
+    $self->{_cm17_bits} .= "0";
     my $delay = shift || 1;
     select (undef, undef, undef, $delay/500);
     return 1;
 }
+
+	# emulator only - not in xx::SerialPort
+sub read_back_cmd {
+    my $self = shift;
+    my $count = 40 * (shift||1);
+    my $size = length $self->{_cm17_bits};
+    unless ($count == $size) {
+	print "Output wrong number of bits ($count) : $size\n";
+        $self->{_cm17_bits} = "";
+	return;
+    }
+	# parse headers, etc.
+    $self->{_cm17_bits} = "";
+    1;
+}
+
 
 sub pulse_dtr_on {
     my $self = shift;
@@ -306,6 +328,13 @@ sub is_status {
     $self->{"_BLOCK"} = 0;
     push @stat, $self->{"_LATCH"};
     return @stat;
+}
+
+sub write_decoder {
+    my $self = shift;
+    my $was  = $self->{"_write_decoder"};
+    $self->{"_write_decoder"} = shift;
+    return $was;
 }
 
 sub reset_error {
@@ -686,7 +715,7 @@ sub lookfor
 ## routines copied from Win32::SerialPort
 sub lookclear {
     my $self = shift;
-    if (nocarp && (@_ == 1)) {
+    if (@_ == 1) {
         $self->{"_fake_input"} = shift;
     }
     $self->{"_LOOK"}	 = "";
@@ -1017,51 +1046,26 @@ sub wait_modemlines
 sub write
 {
     my($self, $str) = @_;
+    if ($self->{'_write_decoder'}) {
+	## permits using an external subroutine name to decode
+	## what is written into simulated response inputs
+	no strict 'refs';	# for $gosub
+	my $gosub = $self->{'_write_decoder'};
+	my $response;
+	eval { $response = &$gosub ($self, $str); };
+	if ($@) {
+	    warn "Problem calling external write_decoder subroutine: $@\n";
+	    return;
+	}
+	use strict 'refs';
+	unless (defined $response) {
+	    warn "Invalid response calling external write_decoder subroutine\n";
+	    return;
+	}
+    }
     $self->_random_wait(0, 0.5);
     $self->{_tx_buf} .= $str;
     return(length($str));
-}
-
-## this alternate  write method decodes the commands sent to the CM11 and
-## preloads the expected response via 'fakeinput'. Hence, it
-## looks like a two-way conversation is occurring.
-
-sub cm11_write {
-    return unless (@_ == 2);
-    my $self = shift;
-    my $wbuf = shift;
-    my $response = "";
-    return unless ($wbuf);
-    my @loc_char = split (//, $wbuf);
-    my $f_char = ord (shift @loc_char);
-
-    if ($f_char == 0x00) {
-	    # start operation (sent after checksum is verified)
-	$response = chr(0x55);	# emulator will respond with 'done'
-	$self->fakeinput($response);
-	return 1;
-    }
-    elsif ($f_char == 0xc3) {
-	    # tell CM11 to send data waiting in the buffer
-	    # issued after CM11 sends "data available" message (0x5a)
-	$response = chr(0x03).chr(0x02).chr(0x6e).chr(0x62);
-	     # Buffer contents which translate to 'A2AJ'
-	$self->fakeinput($response);
-	return 1;
-    }
-    else {
-	    # else just compute the checksum and pass the command on
-	    # for any other command written.
-	my $ccount = 1;
-	my $n_char = "";
-	foreach $n_char (@loc_char) {
-	    $f_char += ord($n_char);
-	    $ccount++;
-	}
-	$response = chr($f_char & 0xff);
-	$self->fakeinput($response);
-	return $ccount;
-    }
 }
 
 # Empty the write buffer
@@ -1115,7 +1119,225 @@ sub set_test_mode_active {
     return @fields;
 }
 
-;
+##### tied FileHandle support
+ 
+# DESTROY this
+#      As with the other types of ties, this method will be called when the
+#      tied handle is about to be destroyed. This is useful for debugging and
+#      possibly cleaning up.
+
+sub DESTROY {
+    my $self = shift;
+    return unless (defined $self->{_alias});
+    if ($self->{"_debug"}) {
+        carp "Destroying $self->{_alias}";
+    }
+    $self->close;
+}
+ 
+sub TIEHANDLE {
+    my $proto = shift;
+    my $class = ref($proto) || $proto;
+
+    return unless (@_);
+
+    my $self = start($class, shift);
+    return $self;
+}
+ 
+# WRITE this, LIST
+#      This method will be called when the handle is written to via the
+#      syswrite function.
+
+sub WRITE {
+    return if (@_ < 3);
+    my $self = shift;
+    my $buf = shift;
+    my $len = shift;
+    my $offset = 0;
+    if (@_) { $offset = shift; }
+    my $out2 = substr($buf, $offset, $len);
+    return unless ($self->post_print($out2));
+    return length($out2);
+}
+
+# PRINT this, LIST
+#      This method will be triggered every time the tied handle is printed to
+#      with the print() function. Beyond its self reference it also expects
+#      the list that was passed to the print function.
+ 
+sub PRINT {
+    my $self = shift;
+    return unless (@_);
+    my $ofs = $, ? $, : "";
+    if ($self->{_OFS}) { $ofs = $self->{_OFS}; }
+    my $ors = $\ ? $\ : "";
+    if ($self->{_ORS}) { $ors = $self->{_ORS}; }
+    my $output = join($ofs,@_);
+    $output .= $ors;
+    return $self->post_print($output);
+}
+
+sub output_field_separator {
+    my $self = shift;
+    my $prev = $self->{_OFS};
+    if (@_) { $self->{_OFS} = shift; }
+    return $prev;
+}
+
+sub output_record_separator {
+    my $self = shift;
+    my $prev = $self->{_ORS};
+    if (@_) { $self->{_ORS} = shift; }
+    return $prev;
+}
+
+sub post_print {
+    my $self = shift;
+    return unless (@_);
+    my $output = shift;
+    my $to_do = length($output);
+    my $done = 0;
+    my $written = 0;
+    while ($done < $to_do) {
+        my $out2 = substr($output, $done);
+        $written = $self->write($out2);
+	if (! defined $written) {
+            return;
+        }
+	return 0 unless ($written);
+	$done += $written;
+    }
+    1;
+}
+ 
+# PRINTF this, LIST
+#      This method will be triggered every time the tied handle is printed to
+#      with the printf() function. Beyond its self reference it also expects
+#      the format and list that was passed to the printf function.
+ 
+sub PRINTF {
+    my $self = shift;
+    my $fmt = shift;
+    return unless ($fmt);
+    return unless (@_);
+    my $output = sprintf($fmt, @_);
+    $self->PRINT($output);
+}
+ 
+# READ this, LIST
+#      This method will be called when the handle is read from via the read
+#      or sysread functions.
+
+sub READ {
+    return if (@_ < 3);
+    my $buf = \$_[1];
+    my ($self, $junk, $bytes, $offset) = @_;
+    unless (defined $offset) { $offset = 0; }
+    my $string_in = $self->input();
+    my $count_in = length($string_in);
+    $self->{_rx_buf} = '';
+    my $size = length($string_in);
+
+    unless ($size == $bytes) {
+	    warn "Test Suite input length mismatch: requested: $bytes\n\tgot: $size, data: $string_in...\n";
+    }
+    return unless ($size);	# simulate timeout
+
+    $$buf = '' unless defined $$buf;
+    my $buflen = length $$buf;
+
+    my ($tail, $head) = ('','');
+
+    if($offset >= 0){ # positive offset
+       if($buflen > $offset + $count_in){
+           $tail = substr($$buf, $offset + $count_in);
+       }
+
+       if($buflen < $offset){
+           $head = $$buf . ("\0" x ($offset - $buflen));
+       } else {
+           $head = substr($$buf, 0, $offset);
+       }
+    } else { # negative offset
+       $head = substr($$buf, 0, ($buflen + $offset));
+
+       if(-$offset > $count_in){
+           $tail = substr($$buf, $offset + $count_in);
+       }
+    }
+
+    # remaining unhandled case: $offset < 0 && -$offset > $buflen
+    $$buf = $head.$string_in.$tail;
+    return $count_in;
+}
+
+# READLINE this
+#      This method will be called when the handle is read from via <HANDLE>.
+#      The method should return undef when there is no more data.
+ 
+sub READLINE {
+    my $self = shift;
+    return if (@_);
+    my $count_in = 0;
+    my $string_in = "";
+    my $match = "";
+    my $was;
+
+    if (wantarray) {
+	my @lines;
+        for (;;) {
+            $string_in = $self->streamline;
+            last if (! defined $string_in);
+	    $match = $self->matchclear;
+            if ( ($string_in ne "") || ($match ne "") ) {
+		$string_in .= $match;
+                push (@lines, $string_in);
+            } else {
+	return @lines if (@lines);
+        return;
+		last;	# no data case
+	    }
+        }
+	return @lines if (@lines);
+        return;
+    }
+    else {
+        $string_in = $self->streamline;
+        last if (! defined $string_in);
+	$match = $self->matchclear;
+        if ( ($string_in ne "") || ($match ne "") ) {
+	    $string_in .= $match;
+	    return $string_in;
+        }
+        return;
+    }
+}
+ 
+# GETC this
+#      This method will be called when the getc function is called.
+ 
+sub GETC {
+    my $self = shift;
+    my ($count, $in) = $self->read(1);
+    if ($count == 1) {
+        return $in;
+    }
+    return;
+}
+ 
+# CLOSE this
+#      This method will be called when the handle is closed via the close
+#      function.
+ 
+sub CLOSE {
+    my $self = shift;
+    my $success = $self->close;
+    if ($Babble) { printf "CLOSE result:%d\n", $success; }
+    return $success;
+}
+
+1;  # so the require or use succeeds
 
 __END__
 
@@ -1145,11 +1367,137 @@ Test::Device::SerialPort - Serial port mock object to be used for testing
 
     # ...
 
+
+=head2 Methods used with Tied FileHandles
+
+  $PortObj = tie (*FH, 'Device::SerialPort', $Configuration_File_Name)
+       || die "Can't tie: $!\n";             ## TIEHANDLE ##
+
+  print FH "text";                           ## PRINT     ##
+  $char = getc FH;                           ## GETC      ##
+  syswrite FH, $out, length($out), 0;        ## WRITE     ##
+  $line = <FH>;                              ## READLINE  ##
+  @lines = <FH>;                             ## READLINE  ##
+  printf FH "received: %s", $line;           ## PRINTF    ##
+  read (FH, $in, 5, 0) or die "$!";          ## READ      ##
+  sysread (FH, $in, 5, 0) or die "$!";       ## READ      ##
+  close FH || warn "close failed";           ## CLOSE     ##
+  undef $PortObj;
+  untie *FH;                                 ## DESTROY   ##
+
+
+=head2 Destructors
+
+  $PortObj->close || warn "close failed";
+      # release port to OS - needed to reopen
+      # close will not usually DESTROY the object
+      # also called as: close FH || warn "close failed";
+
+  undef $PortObj;
+      # preferred unless reopen expected since it triggers DESTROY
+      # calls $PortObj->close but does not confirm success
+      # MUST precede untie - do all three IN THIS SEQUENCE before re-tie.
+
+  untie *FH;
+
+=head2 Methods for I/O Processing
+
+  $PortObj->are_match("text", "\n");	# possible end strings
+  $PortObj->lookclear;			# empty buffers
+  $PortObj->write("Feed Me:");		# initial prompt
+  $PortObj->is_prompt("More Food:");	# not implemented
+
+  my $gotit = "";
+  until ("" ne $gotit) {
+      $gotit = $PortObj->lookfor;	# poll until data ready
+      die "Aborted without match\n" unless (defined $gotit);
+      sleep 1;				# polling sample time
+  }
+
+  printf "gotit = %s\n", $gotit;		# input BEFORE the match
+  my ($match, $after, $pattern, $instead) = $PortObj->lastlook;
+      # input that MATCHED, input AFTER the match, PATTERN that matched
+      # input received INSTEAD when timeout without match
+  printf "lastlook-match = %s  -after = %s  -pattern = %s\n",
+                           $match,      $after,        $pattern;
+
+  $gotit = $PortObj->lookfor($count);	# block until $count chars received
+
+  $PortObj->are_match("-re", "pattern", "text");
+      # possible match strings: "pattern" is a regular expression,
+      #                         "text" is a literal string
+
+      # like lookfor in Test::Device::SerialPort
+  $gotit = $PortObj->streamline;
+  $gotit = $PortObj->streamline($count);
+
+  $PortObj->lookclear("next input");	# preload data for testing
+      # set loopback filter that presets response based on write
+  $was = $PortObj->write_decoder('main::decode_subroutine');
+
+
 =head1 DESCRIPTION
 
-Nothing more.
-It's a test object that mimics the real Device::SerialPort thing.
+This module provides an object-based user interface essentially
+identical to the one provided by the xxx::SerialPort module.
+It's a test object that mimics the real xxx::SerialPort thing.
 Used mainly for testing when I don't have an actual device to test.
+
+Nothing more.
+
+=head2 Initialization
+
+The primary constructor is B<new> with either a F<PortName>, or a
+F<Configuretion File> specified.  With a F<PortName>, this
+will open the port and create the object. The port is not yet ready
+for read/write access. First, the desired I<parameter settings> must
+be established. Since these are tuning constants for an underlying
+hardware driver in the Operating System, they are all checked for
+validity by the methods that set them. The B<write_settings> method
+updates the port (and will return True under POSIX). Ports are opened
+for binary transfers. A separate C<binmode> is not needed.
+
+  $PortObj = new Device::SerialPort ($PortName, $quiet, $lockfile)
+       || die "Can't open $PortName: $!\n";
+
+The C<$quiet> parameter is ignored and is only there for compatibility
+with Win32::SerialPort.  The C<$lockfile> parameter is optional.  It will
+attempt to create a file (containing just the current process id) at the
+location specified. This file will be automatically deleted when the
+C<$PortObj> is no longer used (by DESTROY). You would usually request
+C<$lockfile> with C<$quiet> true to disable messages while attempting
+to obtain exclusive ownership of the port via the lock. Lockfiles are
+experimental in Version 0.07. They are intended for use with other
+applications. No attempt is made to resolve port aliases (/dev/modem ==
+/dev/ttySx) or to deal with login processes such as getty and uugetty.
+
+Using a F<Configuration File> with B<new> or by using second constructor,
+B<start>, scripts can be simplified if they need a constant setup. It
+executes all the steps from B<new> to B<write_settings> based on a previously
+saved configuration. This constructor will return C<undef> on a bad
+configuration file or failure of a validity check. The returned object is
+ready for access. This is new and experimental for Version 0.055.
+
+  $PortObj2 = start Device::SerialPort ($Configuration_File_Name)
+       || die;
+
+The third constructor, B<tie>, combines the B<start> with Perl's
+support for tied FileHandles (see I<perltie>). Test::Device::SerialPort
+implements the complete set of methods: TIEHANDLE, PRINT, PRINTF,
+WRITE, READ, GETC, READLINE, CLOSE, and DESTROY. Tied FileHandle
+support is new with Version 0.06. READLINE calls B<streamline> and
+can be preloaded using B<lookclear>.
+
+  $PortObj2 = tie (*FH, 'Device::SerialPort', $Configuration_File_Name)
+       || die;
+
+The tied FileHandle methods may be combined with the Test::Device::SerialPort
+methods for B<read, input>, and B<write> as well as other methods. The
+typical restrictions against mixing B<print> with B<syswrite> do not
+apply. Since both B<(tied) read> and B<sysread> call the same C<$ob-E<gt>READ>
+method, and since a separate C<$ob-E<gt>read> method has existed for some
+time in Test::Device::SerialPort, you should always use B<sysread> with the
+tied interface.
 
 =head1 STATUS
 
@@ -1175,7 +1523,6 @@ accurately.
 The configuration file methods B<save and start> have minimal support.
 Settings are not saved or restored although a two_line config file is created.
 B<restart> is not supported yet. Nor are lockfiles nor "quiet mode".
-Tied filehandle methods are not supported yet either.
 
 =head1 AUTHORS
 
